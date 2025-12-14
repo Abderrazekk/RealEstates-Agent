@@ -131,7 +131,7 @@ app.use("*", (req, res) => {
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(
-      process.env.MONGODB_URI || "mongodb://localhost:27017/estate",
+      process.env.MONGODB_URI,
       {
         useNewUrlParser: true,
         useUnifiedTopology: true,
@@ -165,7 +165,7 @@ const connectDB = async () => {
     }
 
     // Start server
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT;
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(
@@ -191,9 +191,3 @@ const connectDB = async () => {
 connectDB();
 
 export default app;
-
-// pfjdfpsdnfpnfspdfnpsdof
-//aaaaaaaaaaaaaaaaaaaaaaaa
-//bbbbbbbbbbbbbbbbbbbbbbbb
-//cccccccccccccccccccccccc
-//dddddddddddddddddddddddd
