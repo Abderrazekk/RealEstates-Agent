@@ -130,13 +130,19 @@ app.use("*", (req, res) => {
 // MongoDB connection
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(
-      process.env.MONGODB_URI,
-      {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-      }
-    );
+    const mongoUri = process.env.MONGODB_URI;
+
+    if (!mongoUri) {
+      console.error(
+        "❌ MONGODB_URI is not defined! Set it in Render environment variables."
+      );
+      process.exit(1); // Stop app to avoid trying localhost
+    }
+
+    const conn = await mongoose.connect(mongoUri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
 
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
 
