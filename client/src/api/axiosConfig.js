@@ -37,3 +37,4 @@ export default apiClient;
 
 // The above axios instance can now be imported and used in AuthContext.jsx like so:
 // import apiClient from '../api/axiosConfig';
+// and replace all instances of axios with apiClient.
