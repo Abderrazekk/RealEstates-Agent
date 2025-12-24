@@ -35,3 +35,6 @@ apiClient.interceptors.response.use(
 
 export default apiClient;
 
+// Usage example:
+// import apiClient from './axiosConfig';
+// apiClient.get('/endpoint').then(response => console.log(response.data));
