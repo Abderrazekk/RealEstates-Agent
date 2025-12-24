@@ -44,3 +44,4 @@ export default apiClient;
 // apiClient.patch('/endpoint', data).then(response => console.log(response.data));
 // apiClient.head('/endpoint').then(response => console.log(response.data));
 // apiClient.options('/endpoint').then(response => console.log(response.data));
+// apiClient.request({ method: 'get', url: '/endpoint' }).then(response => console.log(response.data));
