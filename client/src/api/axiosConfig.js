@@ -46,3 +46,6 @@ export default apiClient;
 // apiClient.options('/endpoint').then(response => console.log(response.data));
 // apiClient.request({ method: 'get', url: '/endpoint' }).then(response => console.log(response.data));
 // apiClient.all([apiClient.get('/endpoint1'), apiClient.get('/endpoint2')])
+//   .then(axios.spread((res1, res2) => {
+//     console.log(res1.data, res2.data);
+//   }));
