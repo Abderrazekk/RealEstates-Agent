@@ -45,3 +45,4 @@ export default apiClient;
 // apiClient.head('/endpoint').then(response => console.log(response.data));
 // apiClient.options('/endpoint').then(response => console.log(response.data));
 // apiClient.request({ method: 'get', url: '/endpoint' }).then(response => console.log(response.data));
+// apiClient.all([apiClient.get('/endpoint1'), apiClient.get('/endpoint2')])
