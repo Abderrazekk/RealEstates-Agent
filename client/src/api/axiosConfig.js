@@ -38,3 +38,9 @@ export default apiClient;
 // Usage example:
 // import apiClient from './axiosConfig';
 // apiClient.get('/endpoint').then(response => console.log(response.data));
+// apiClient.post('/endpoint', data).then(response => console.log(response.data));
+// apiClient.put('/endpoint', data).then(response => console.log(response.data));
+// apiClient.delete('/endpoint').then(response => console.log(response.data));
+// apiClient.patch('/endpoint', data).then(response => console.log(response.data));
+// apiClient.head('/endpoint').then(response => console.log(response.data));
+// apiClient.options('/endpoint').then(response => console.log(response.data));
