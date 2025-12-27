@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import PropertyCard from '../../components/PropertyCard/PropertyCard';
 import LoadingSpinner from '../../components/LoadingSpinner/LoadingSpinner';
 import { toast } from 'react-toastify';
@@ -14,11 +14,15 @@ const SavedProperties = () => {
 
   const fetchSavedProperties = async () => {
     try {
-      const response = await axios.get('/api/users/saved-properties');
+      const response = await api.get('/api/users/saved-properties');
       setSavedProperties(response.data.data);
     } catch (error) {
       console.error('Error fetching saved properties:', error);
-      toast.error('Failed to load saved properties');
+      if (error.userMessage) {
+        toast.error(error.userMessage);
+      } else {
+        toast.error('Failed to load saved properties');
+      }
     } finally {
       setLoading(false);
     }
@@ -26,12 +30,16 @@ const SavedProperties = () => {
 
   const handleRemoveSaved = async (propertyId) => {
     try {
-      await axios.delete(`/api/users/unsave-property/${propertyId}`);
+      await api.delete(`/api/users/unsave-property/${propertyId}`);
       setSavedProperties(prev => prev.filter(p => p._id !== propertyId));
       toast.success('Property removed from saved list');
     } catch (error) {
       console.error('Error removing saved property:', error);
-      toast.error('Failed to remove property');
+      if (error.userMessage) {
+        toast.error(error.userMessage);
+      } else {
+        toast.error('Failed to remove property');
+      }
     }
   };
 

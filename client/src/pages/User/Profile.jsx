@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import axios from 'axios';
+import api from '../../utils/api';
 import { toast } from 'react-toastify';
 
 const Profile = () => {
@@ -67,7 +67,7 @@ const Profile = () => {
     setLoading(true);
     
     try {
-      await axios.put('/api/auth/change-password', {
+      await api.put('/api/auth/change-password', {
         currentPassword: formData.currentPassword,
         newPassword: formData.newPassword
       });
@@ -80,7 +80,12 @@ const Profile = () => {
         confirmPassword: ''
       }));
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to change password');
+      console.error("Error changing password:", error);
+      if (error.userMessage) {
+        toast.error(error.userMessage);
+      } else {
+        toast.error(error.response?.data?.message || 'Failed to change password');
+      }
     } finally {
       setLoading(false);
     }
