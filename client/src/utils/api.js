@@ -3,7 +3,7 @@ import axios from "axios";
 
 // Create axios instance with base URL from environment variables
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:5000",
+  baseURL: process.env.REACT_APP_API_URL || "https://realestates-agent-1.onrender.com",
   headers: {
     "Content-Type": "application/json",
   },
