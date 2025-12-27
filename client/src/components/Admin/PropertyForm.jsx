@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import axios from "axios";
+import api from "../../utils/api"; // Changed from axios to api
 import { toast } from "react-toastify";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { useAuth } from "../../context/AuthContext"; // Added useAuth
 
 // Fix for default markers in Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -63,7 +64,9 @@ function LocationMarker({ position, setPosition, setFormData }) {
 const PropertyForm = ({ onClose, onSuccess }) => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user, isAdmin } = useAuth(); // Added useAuth
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null); // Added error state
   const [mapPosition, setMapPosition] = useState([51.505, -0.09]); // Default position
   const [videoFile, setVideoFile] = useState(null);
   const videoRef = useRef(null);
@@ -105,15 +108,37 @@ const PropertyForm = ({ onClose, onSuccess }) => {
   const [imageFiles, setImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
 
+  // Check authentication and admin status
   useEffect(() => {
+    console.log("PropertyForm - User:", user);
+    console.log("PropertyForm - isAdmin:", isAdmin ? isAdmin() : false);
+    console.log("PropertyForm - Token:", localStorage.getItem("token") ? "Exists" : "Missing");
+    
+    if (!user) {
+      toast.error("Please login to continue");
+      navigate("/login");
+      return;
+    }
+    
+    if (isAdmin && !isAdmin()) {
+      toast.error("Admin access required");
+      navigate("/");
+      return;
+    }
+    
     if (id) {
       fetchProperty();
     }
-  }, [id]);
+  }, [id, user, isAdmin, navigate]);
 
   const fetchProperty = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const response = await axios.get(`/api/properties/${id}`);
+      console.log("Fetching property with ID:", id);
+      const response = await api.get(`/api/properties/${id}`);
+      console.log("Property fetch response:", response.data);
+      
       const data = response.data.data;
 
       // Update map position if coordinates exist
@@ -153,7 +178,17 @@ const PropertyForm = ({ onClose, onSuccess }) => {
         },
       });
     } catch (error) {
-      toast.error("Failed to fetch property data");
+      console.error("Error fetching property:", error);
+      const errorMessage = error.userMessage || "Failed to fetch property data";
+      setError(errorMessage);
+      toast.error(errorMessage);
+      
+      // If authentication error, redirect to login
+      if (error.response?.status === 401) {
+        navigate("/login");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -287,25 +322,38 @@ const PropertyForm = ({ onClose, onSuccess }) => {
     }
   };
 
-  const removeVideo = () => {
-    setVideoFile(null);
+  const removeVideo = async () => {
     if (id && formData.video) {
-      // Delete video from server
-      axios
-        .delete(`/api/properties/${id}/video`)
-        .then(() => {
-          setFormData((prev) => ({ ...prev, video: null }));
-          toast.success("Video removed");
-        })
-        .catch((error) => {
-          toast.error("Failed to remove video");
-        });
+      try {
+        await api.delete(`/api/properties/${id}/video`);
+        setFormData((prev) => ({ ...prev, video: null }));
+        setVideoFile(null);
+        toast.success("Video removed");
+      } catch (error) {
+        toast.error(error.userMessage || "Failed to remove video");
+      }
+    } else {
+      setVideoFile(null);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Check authentication and admin status
+    if (!user) {
+      toast.error("Please login to continue");
+      navigate("/login");
+      return;
+    }
+    
+    if (isAdmin && !isAdmin()) {
+      toast.error("Admin access required");
+      return;
+    }
+    
     setLoading(true);
+    setError(null);
 
     try {
       const formDataToSend = new FormData();
@@ -363,20 +411,18 @@ const PropertyForm = ({ onClose, onSuccess }) => {
       }
 
       console.log("Submitting property data:", propertyData);
+      console.log("API URL base:", process.env.REACT_APP_API_URL);
+      console.log("User token:", localStorage.getItem("token")?.substring(0, 20) + "...");
 
+      let response;
+      
       if (id) {
-        await axios.put(`/api/properties/${id}`, formDataToSend, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        });
+        console.log("Making PUT request to:", `/api/properties/${id}`);
+        response = await api.put(`/api/properties/${id}`, formDataToSend);
+        console.log("Update response:", response.data);
         toast.success("Property updated successfully");
       } else {
-        await axios.post("/api/properties", formDataToSend, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        });
+        response = await api.post("/api/properties", formDataToSend);
         toast.success("Property created successfully");
       }
 
@@ -388,11 +434,67 @@ const PropertyForm = ({ onClose, onSuccess }) => {
     } catch (error) {
       console.error("Error saving property:", error);
       console.error("Error response:", error.response?.data);
-      toast.error(error.response?.data?.message || "Failed to save property");
+      
+      const errorMessage = error.userMessage || 
+                          error.response?.data?.message || 
+                          "Failed to save property";
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
+      
+      // Handle specific errors
+      if (error.response?.status === 401) {
+        console.warn("Authentication failed, token might be invalid");
+        localStorage.removeItem("token");
+        toast.error("Session expired. Please login again.");
+        setTimeout(() => navigate("/login"), 1500);
+      } else if (error.response?.status === 403) {
+        toast.error("Access denied. Admin privileges required.");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // Show loading state
+  if (loading && !formData.title) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading property data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && !formData.title && id) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg mb-6">
+            <p className="font-medium">{error}</p>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">Unable to Load Property</h2>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={fetchProperty}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
+            >
+              Retry
+            </button>
+            <button
+              onClick={() => navigate("/admin/properties")}
+              className="bg-gray-200 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-300 transition"
+            >
+              Back to Properties
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 px-4 sm:px-6 lg:px-8">
@@ -413,6 +515,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
             <button
               onClick={() => navigate("/admin/properties")}
               className="text-white hover:bg-white/20 rounded-full p-2 transition-colors duration-200"
+              disabled={loading}
             >
               <svg
                 className="w-6 h-6"
@@ -430,6 +533,24 @@ const PropertyForm = ({ onClose, onSuccess }) => {
             </button>
           </div>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <span className="flex-1">{error}</span>
+              <button 
+                onClick={() => setError(null)} 
+                className="ml-4 text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Information */}
@@ -468,6 +589,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="Enter property title"
                   required
+                  disabled={loading}
                 />
               </div>
               <div>
@@ -482,9 +604,9 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 resize-none"
                   placeholder="Describe the property..."
                   required
+                  disabled={loading}
                 />
               </div>
-              // In the Basic Information section, update the price input:
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -503,7 +625,8 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                       placeholder="Enter property price"
                       required
                       min="0"
-                      step="any" // Allow any decimal value
+                      step="any"
+                      disabled={loading}
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
@@ -521,6 +644,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     onChange={handleChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white"
                     required
+                    disabled={loading}
                   >
                     <option value="House">House</option>
                     <option value="Apartment">Apartment</option>
@@ -542,6 +666,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     onChange={handleChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white"
                     required
+                    disabled={loading}
                   >
                     <option value="For Sale">For Sale</option>
                     <option value="For Rent">For Rent</option>
@@ -563,6 +688,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     placeholder="YYYY"
                     min="1800"
                     max={new Date().getFullYear()}
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -612,6 +738,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="e.g., New York, NY"
                     required
+                    disabled={loading}
                   />
                 </div>
 
@@ -627,6 +754,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="Click on map to select location"
                     readOnly
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -637,6 +765,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   center={mapPosition}
                   zoom={13}
                   style={{ height: "100%", width: "100%" }}
+                  scrollWheelZoom={true}
                 >
                   <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -690,6 +819,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     onChange={handleAddressChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     placeholder="Street name"
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -733,6 +863,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   placeholder="0"
                   min="0"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -749,6 +880,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   placeholder="0"
                   min="0"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -765,6 +897,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   placeholder="0"
                   min="0"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -803,11 +936,13 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     e.key === "Enter" &&
                     (e.preventDefault(), handleAddFeature())
                   }
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={handleAddFeature}
-                  className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors duration-200 shadow-md hover:shadow-lg"
+                  className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading}
                 >
                   Add
                 </button>
@@ -823,7 +958,8 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     <button
                       type="button"
                       onClick={() => handleRemoveFeature(index)}
-                      className="text-blue-600 hover:text-red-600 hover:bg-red-50 rounded-full p-1 transition-colors duration-200"
+                      className="text-blue-600 hover:text-red-600 hover:bg-red-50 rounded-full p-1 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={loading}
                     >
                       <svg
                         className="w-4 h-4"
@@ -878,11 +1014,13 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     e.key === "Enter" &&
                     (e.preventDefault(), handleAddAmenity())
                   }
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={handleAddAmenity}
-                  className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors duration-200 shadow-md hover:shadow-lg"
+                  className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading}
                 >
                   Add
                 </button>
@@ -898,7 +1036,8 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     <button
                       type="button"
                       onClick={() => handleRemoveAmenity(index)}
-                      className="text-pink-600 hover:text-red-600 hover:bg-red-50 rounded-full p-1 transition-colors duration-200"
+                      className="text-pink-600 hover:text-red-600 hover:bg-red-50 rounded-full p-1 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={loading}
                     >
                       <svg
                         className="w-4 h-4"
@@ -960,9 +1099,9 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     accept="image/*"
                     multiple
                     onChange={handleImageUpload}
-                    className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                    className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={
-                      imagePreviews.length + formData.images.length >= 10
+                      imagePreviews.length + formData.images.length >= 10 || loading
                     }
                   />
                   {imagePreviews.length + formData.images.length >= 10 && (
@@ -985,11 +1124,15 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                       src={image.url}
                       alt={`Existing ${index}`}
                       className="w-full h-40 object-cover"
+                      onError={(e) => {
+                        e.target.src = "/property-placeholder.jpg";
+                      }}
                     />
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
-                      className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 shadow-lg"
+                      className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={loading}
                     >
                       <svg
                         className="w-4 h-4"
@@ -1022,7 +1165,8 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
-                      className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 shadow-lg"
+                      className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={loading}
                     >
                       <svg
                         className="w-4 h-4"
@@ -1081,7 +1225,8 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   type="file"
                   accept="video/*"
                   onChange={handleVideoUpload}
-                  className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer"
+                  className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading}
                 />
               </div>
 
@@ -1104,7 +1249,8 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   <button
                     type="button"
                     onClick={removeVideo}
-                    className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full hover:bg-red-600 shadow-lg transition-colors duration-200"
+                    className="absolute top-4 right-4 bg-red-500 text-white p-3 rounded-full hover:bg-red-600 shadow-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={loading}
                   >
                     <svg
                       className="w-5 h-5"
@@ -1165,6 +1311,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   onChange={handleAgentChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="John Doe"
+                  disabled={loading}
                 />
               </div>
 
@@ -1179,6 +1326,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   onChange={handleAgentChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="agent@example.com"
+                  disabled={loading}
                 />
               </div>
 
@@ -1193,6 +1341,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   onChange={handleAgentChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="+1 (555) 123-4567"
+                  disabled={loading}
                 />
               </div>
 
@@ -1207,6 +1356,7 @@ const PropertyForm = ({ onClose, onSuccess }) => {
                   onChange={handleAgentChange}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   placeholder="https://example.com/agent.jpg"
+                  disabled={loading}
                 />
               </div>
             </div>

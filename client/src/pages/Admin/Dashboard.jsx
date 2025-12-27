@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
-import axios from "axios";
+import api from "../../utils/api"; // Changed from axios to api
 import { Link } from "react-router-dom";
 
 const AdminDashboard = () => {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null); // Added error state
 
   useEffect(() => {
     fetchDashboardData();
@@ -14,10 +15,11 @@ const AdminDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await axios.get("/api/admin/dashboard");
+      const response = await api.get("/api/admin/dashboard");
       setStats(response.data.data);
     } catch (error) {
       console.error("Error fetching dashboard:", error);
+      setError(error.userMessage || "Failed to load dashboard data");
     } finally {
       setLoading(false);
     }
@@ -29,6 +31,25 @@ const AdminDashboard = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !stats) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg max-w-md">
+            <p className="font-medium">Error loading dashboard</p>
+            <p className="text-sm mt-2">{error}</p>
+            <button 
+              onClick={fetchDashboardData}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -57,7 +78,7 @@ const AdminDashboard = () => {
                   Total Properties
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900">
-                  {stats?.stats.totalProperties}
+                  {stats?.stats.totalProperties || 0}
                 </h3>
               </div>
               <div className="text-4xl">🏠</div>
@@ -71,7 +92,7 @@ const AdminDashboard = () => {
                   Published
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900">
-                  {stats?.stats.publishedProperties}
+                  {stats?.stats.publishedProperties || 0}
                 </h3>
               </div>
               <div className="text-4xl">📊</div>
@@ -85,7 +106,7 @@ const AdminDashboard = () => {
                   Total Users
                 </p>
                 <h3 className="text-3xl font-bold text-gray-900">
-                  {stats?.stats.totalUsers}
+                  {stats?.stats.totalUsers || 0}
                 </h3>
               </div>
               <div className="text-4xl">👥</div>
@@ -97,7 +118,7 @@ const AdminDashboard = () => {
               <div>
                 <p className="text-gray-500 text-sm font-medium mb-1">Admins</p>
                 <h3 className="text-3xl font-bold text-gray-900">
-                  {stats?.stats.totalAdmins}
+                  {stats?.stats.totalAdmins || 0}
                 </h3>
               </div>
               <div className="text-4xl">👑</div>
@@ -132,34 +153,41 @@ const AdminDashboard = () => {
           <h2 className="text-2xl font-bold text-gray-900 mb-6">
             Recent Properties
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {stats?.recentProperties?.map((property) => (
-              <Link
-                key={property._id}
-                to={`/property/${property._id}`}
-                className="group bg-gray-50 rounded-lg overflow-hidden hover:shadow-lg transition-shadow duration-300"
-              >
-                <div className="relative h-48 overflow-hidden">
-                  <img
-                    src={property.images[0]?.url || "/property-placeholder.jpg"}
-                    alt={property.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                  />
-                </div>
-                <div className="p-4">
-                  <h4 className="font-semibold text-gray-900 mb-1 truncate">
-                    {property.title}
-                  </h4>
-                  <p className="text-gray-600 text-sm mb-2">
-                    {property.location}
-                  </p>
-                  <span className="text-blue-600 font-bold text-lg">
-                    ${property.price.toLocaleString()}
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
+          {stats?.recentProperties?.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {stats.recentProperties.map((property) => (
+                <Link
+                  key={property._id}
+                  to={`/property/${property._id}`}
+                  className="group bg-gray-50 rounded-lg overflow-hidden hover:shadow-lg transition-shadow duration-300"
+                >
+                  <div className="relative h-48 overflow-hidden">
+                    <img
+                      src={property.images[0]?.url || "/property-placeholder.jpg"}
+                      alt={property.title}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                      onError={(e) => {
+                        e.target.src = "/property-placeholder.jpg";
+                      }}
+                    />
+                  </div>
+                  <div className="p-4">
+                    <h4 className="font-semibold text-gray-900 mb-1 truncate">
+                      {property.title}
+                    </h4>
+                    <p className="text-gray-600 text-sm mb-2">
+                      {property.location}
+                    </p>
+                    <span className="text-blue-600 font-bold text-lg">
+                      ${property.price?.toLocaleString() || "0"}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-600 text-center py-4">No recent properties</p>
+          )}
         </div>
 
         {/* Recent Users */}
@@ -167,35 +195,42 @@ const AdminDashboard = () => {
           <h2 className="text-2xl font-bold text-gray-900 mb-6">
             Recent Users
           </h2>
-          <div className="space-y-4">
-            {stats?.recentUsers?.map((userItem) => (
-              <div
-                key={userItem._id}
-                className="flex items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200"
-              >
-                <img
-                  src={userItem.profilePicture || "/default-avatar.png"}
-                  alt={userItem.name}
-                  className="w-12 h-12 rounded-full object-cover mr-4"
-                />
-                <div className="flex-1">
-                  <h4 className="font-semibold text-gray-900">
-                    {userItem.name}
-                  </h4>
-                  <p className="text-gray-600 text-sm">{userItem.email}</p>
-                </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    userItem.role === "admin"
-                      ? "bg-purple-100 text-purple-800"
-                      : "bg-blue-100 text-blue-800"
-                  }`}
+          {stats?.recentUsers?.length > 0 ? (
+            <div className="space-y-4">
+              {stats.recentUsers.map((userItem) => (
+                <div
+                  key={userItem._id}
+                  className="flex items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200"
                 >
-                  {userItem.role}
-                </span>
-              </div>
-            ))}
-          </div>
+                  <img
+                    src={userItem.profilePicture || "/default-avatar.png"}
+                    alt={userItem.name}
+                    className="w-12 h-12 rounded-full object-cover mr-4"
+                    onError={(e) => {
+                      e.target.src = "/default-avatar.png";
+                    }}
+                  />
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-gray-900">
+                      {userItem.name}
+                    </h4>
+                    <p className="text-gray-600 text-sm">{userItem.email}</p>
+                  </div>
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      userItem.role === "admin"
+                        ? "bg-purple-100 text-purple-800"
+                        : "bg-blue-100 text-blue-800"
+                    }`}
+                  >
+                    {userItem.role}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-600 text-center py-4">No recent users</p>
+          )}
         </div>
       </div>
     </div>

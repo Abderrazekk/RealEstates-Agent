@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api'; // Changed from axios to api
 import PropertyCard from '../../components/PropertyCard/PropertyCard';
 import PropertyFilter from '../../components/PropertyFilter/PropertyFilter';
 import LoadingSpinner from '../../components/LoadingSpinner/LoadingSpinner';
@@ -7,6 +7,7 @@ import LoadingSpinner from '../../components/LoadingSpinner/LoadingSpinner';
 const Properties = () => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null); // Added error state
   const [sortBy, setSortBy] = useState('createdAt');
   const [pagination, setPagination] = useState({
     page: 1,
@@ -35,6 +36,7 @@ const Properties = () => {
 
   const filterProperties = async (filterData = filters) => {
     setLoading(true);
+    setError(null);
     
     try {
       const params = {
@@ -56,11 +58,12 @@ const Properties = () => {
         }
       }
       
-      const response = await axios.get('/api/properties', { params });
+      const response = await api.get('/api/properties', { params });
       setProperties(response.data.data);
       setPagination(response.data.pagination);
     } catch (error) {
       console.error('Failed to fetch properties:', error);
+      setError(error.userMessage || 'Failed to load properties');
     } finally {
       setLoading(false);
     }
@@ -107,6 +110,24 @@ const Properties = () => {
             initialFilters={filters}
           />
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <span>{error}</span>
+              <button 
+                onClick={() => filterProperties()} 
+                className="ml-auto text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Results Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 bg-white rounded-lg shadow-sm p-6">
@@ -188,6 +209,14 @@ const Properties = () => {
             </svg>
             <h3 className="text-2xl font-bold text-gray-800 mb-2">No properties found</h3>
             <p className="text-gray-600">Try adjusting your search filters</p>
+            {error && (
+              <button 
+                onClick={() => filterProperties()} 
+                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Retry Search
+              </button>
+            )}
           </div>
         )}
       </div>

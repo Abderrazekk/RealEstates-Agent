@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../../utils/api"; // Changed from axios to api
 import { useAuth } from "../../context/AuthContext";
 import LoadingSpinner from "../../components/LoadingSpinner/LoadingSpinner";
 import { toast } from "react-toastify";
@@ -23,25 +23,28 @@ const PropertyDetails = () => {
   const { user, isAdmin } = useAuth();
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null); // Added error state
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [similarProperties, setSimilarProperties] = useState([]);
+  const [similarLoading, setSimilarLoading] = useState(false); // Added loading for similar properties
   const [tourForm, setTourForm] = useState({
-  name: user?.name || "",
-  phone: user?.phone || "", // Only show name and phone for logged-in users
-  date: "",
-  time: "",
-  notes: "",
-});
-
+    name: user?.name || "",
+    phone: user?.phone || "",
+    date: "",
+    time: "",
+    notes: "",
+  });
   const [submitting, setSubmitting] = useState(false);
   const [meetingSuccess, setMeetingSuccess] = useState(false);
 
   const fetchProperty = useCallback(async () => {
     try {
-      const response = await axios.get(`/api/properties/${id}`);
+      const response = await api.get(`/api/properties/${id}`);
       setProperty(response.data.data);
+      setError(null);
     } catch (error) {
       console.error("Error fetching property:", error);
+      setError(error.userMessage || "Failed to load property details");
     } finally {
       setLoading(false);
     }
@@ -52,11 +55,14 @@ const PropertyDetails = () => {
   }, [fetchProperty]);
 
   const fetchSimilarProperties = useCallback(async () => {
+    setSimilarLoading(true);
     try {
-      const response = await axios.get(`/api/properties/${id}/similar`);
+      const response = await api.get(`/api/properties/${id}/similar`);
       setSimilarProperties(response.data.data);
     } catch (error) {
       console.error("Error fetching similar properties:", error);
+    } finally {
+      setSimilarLoading(false);
     }
   }, [id]);
 
@@ -67,7 +73,6 @@ const PropertyDetails = () => {
   }, [property, fetchSimilarProperties]);
 
   const formatPrice = (price) => {
-    // If price is not a valid number, show "Price on request"
     if (!price || isNaN(price) || price <= 0) {
       return "Price on request";
     }
@@ -80,7 +85,6 @@ const PropertyDetails = () => {
     }).format(price);
   };
 
-  // Image gallery functions
   const nextImage = () => {
     if (property?.images?.length > 0) {
       setActiveImageIndex((prevIndex) =>
@@ -106,13 +110,11 @@ const PropertyDetails = () => {
       return;
     }
 
-    // Validate form
     if (!tourForm.date || !tourForm.time) {
       toast.error("Please select both date and time");
       return;
     }
 
-    // Combine date and time
     const meetingDateTime = new Date(`${tourForm.date}T${tourForm.time}`);
 
     if (meetingDateTime <= new Date()) {
@@ -123,29 +125,19 @@ const PropertyDetails = () => {
     setSubmitting(true);
 
     try {
-      const response = await axios.post(
-        "/api/meetings",
-        {
-          propertyId: id,
-          userName: user.name, // Always use logged-in user's name
-          userPhone: tourForm.phone,
-          meetingDate: meetingDateTime.toISOString(),
-          notes: tourForm.notes,
-          // Don't send email - backend will use user's account email
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
-      );
+      const response = await api.post("/api/meetings", {
+        propertyId: id,
+        userName: user.name,
+        userPhone: tourForm.phone,
+        meetingDate: meetingDateTime.toISOString(),
+        notes: tourForm.notes,
+      });
 
       toast.success(
         response.data.message || "Meeting request submitted successfully!"
       );
       setMeetingSuccess(true);
 
-      // Reset form
       setTourForm({
         name: user?.name || "",
         phone: user?.phone || "",
@@ -155,7 +147,9 @@ const PropertyDetails = () => {
       });
     } catch (error) {
       const errorMessage =
-        error.response?.data?.message || "Failed to schedule meeting";
+        error.userMessage ||
+        error.response?.data?.message ||
+        "Failed to schedule meeting";
       toast.error(errorMessage);
       console.error("Error scheduling meeting:", error);
     } finally {
@@ -185,17 +179,49 @@ const PropertyDetails = () => {
 
     if (window.confirm("Are you sure you want to delete this property?")) {
       try {
-        await axios.delete(`/api/properties/${id}`);
+        await api.delete(`/api/properties/${id}`);
         toast.success("Property deleted successfully");
         navigate("/properties");
       } catch (error) {
-        toast.error("Failed to delete property");
+        toast.error(error.userMessage || "Failed to delete property");
       }
     }
   };
 
   if (loading) {
     return <LoadingSpinner />;
+  }
+
+  if (error && !property) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center px-4 max-w-md">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg mb-6">
+            <p className="font-medium">{error}</p>
+          </div>
+          <h2 className="text-3xl font-bold text-gray-800 mb-4">
+            Property Not Found
+          </h2>
+          <p className="text-gray-600 mb-6">
+            The property you're looking for doesn't exist or cannot be loaded.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              to="/properties"
+              className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
+            >
+              Browse Properties
+            </Link>
+            <button
+              onClick={fetchProperty}
+              className="inline-block bg-gray-200 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-300 transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!property) {
@@ -236,6 +262,34 @@ const PropertyDetails = () => {
             <span>/</span>
             <span className="text-gray-800 font-medium">{property.title}</span>
           </nav>
+
+          {/* Error Banner */}
+          {error && (
+            <div className="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
+              <div className="flex">
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="text-sm">
+                  {error} (some features may be limited)
+                </span>
+                <button
+                  onClick={fetchProperty}
+                  className="ml-auto text-blue-600 hover:text-blue-700 text-sm font-medium"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Title and Meta */}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -301,6 +355,9 @@ const PropertyDetails = () => {
                       }
                       alt={`${property.title} - View ${activeImageIndex + 1}`}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.src = "/property-placeholder.jpg";
+                      }}
                     />
 
                     {/* Navigation Arrows */}
@@ -375,6 +432,9 @@ const PropertyDetails = () => {
                           src={img.url}
                           alt={`Thumbnail ${index + 1}`}
                           className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                          onError={(e) => {
+                            e.target.src = "/property-placeholder.jpg";
+                          }}
                         />
                       </button>
                     ))}
@@ -419,7 +479,7 @@ const PropertyDetails = () => {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
                 <div className="space-y-1">
                   <p className="text-sm text-gray-500">Property Type</p>
-                  <p className="text-lg font-semibold text-gray-900">
+                  <p className="text-lg font-semibold text-gray-900 capitalize">
                     {property.type}
                   </p>
                 </div>
@@ -440,25 +500,25 @@ const PropertyDetails = () => {
                 <div className="space-y-1">
                   <p className="text-sm text-gray-500">Bedrooms</p>
                   <p className="text-lg font-semibold text-gray-900">
-                    {property.beds}
+                    {property.beds || "N/A"}
                   </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-gray-500">Bathrooms</p>
                   <p className="text-lg font-semibold text-gray-900">
-                    {property.baths}
+                    {property.baths || "N/A"}
                   </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-gray-500">Square Feet</p>
                   <p className="text-lg font-semibold text-gray-900">
-                    {property.sqft.toLocaleString()}
+                    {property.sqft ? property.sqft.toLocaleString() : "N/A"}
                   </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-gray-500">Year Built</p>
                   <p className="text-lg font-semibold text-gray-900">
-                    {property.yearBuilt}
+                    {property.yearBuilt || "N/A"}
                   </p>
                 </div>
               </div>
@@ -470,7 +530,7 @@ const PropertyDetails = () => {
                 Description
               </h2>
               <p className="text-gray-700 leading-relaxed">
-                {property.description}
+                {property.description || "No description available."}
               </p>
             </div>
 
@@ -566,8 +626,15 @@ const PropertyDetails = () => {
                   <div>
                     <h3 className="font-semibold text-gray-800">Address</h3>
                     <p className="text-gray-700">
-                      {property.address.formattedAddress ||
-                        `${property.address.street}, ${property.address.city}, ${property.address.state} ${property.address.zipCode}`}
+                      {property.address?.formattedAddress ||
+                        (property.address?.street &&
+                          `${property.address.street}, ${
+                            property.address.city || ""
+                          }, ${property.address.state || ""} ${
+                            property.address.zipCode || ""
+                          }`) ||
+                        property.location ||
+                        "Address not available"}
                     </p>
                   </div>
                 </div>
@@ -600,9 +667,7 @@ const PropertyDetails = () => {
                       <Popup>
                         <div className="p-2">
                           <strong>{property.title}</strong>
-                          <p className="text-sm mt-1">
-                            {property.address.formattedAddress}
-                          </p>
+                          <p className="text-sm mt-1">{property.location}</p>
                         </div>
                       </Popup>
                     </Marker>
@@ -632,10 +697,15 @@ const PropertyDetails = () => {
               {/* Map Controls */}
               <div className="mt-4 flex justify-center space-x-4">
                 <a
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${property.coordinates.lat},${property.coordinates.lng}`}
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${
+                    property.coordinates?.lat || ""
+                  },${property.coordinates?.lng || ""}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                  disabled={
+                    !property.coordinates?.lat || !property.coordinates?.lng
+                  }
                 >
                   <svg
                     className="w-5 h-5"
@@ -667,6 +737,9 @@ const PropertyDetails = () => {
                     src={property.agent.image || "/agent-placeholder.jpg"}
                     alt={property.agent.name}
                     className="w-16 h-16 rounded-full object-cover"
+                    onError={(e) => {
+                      e.target.src = "/agent-placeholder.jpg";
+                    }}
                   />
                   <div>
                     <h4 className="font-semibold text-gray-900">
@@ -771,16 +844,6 @@ const PropertyDetails = () => {
                     value={tourForm.name}
                     onChange={(e) =>
                       setTourForm({ ...tourForm, name: e.target.value })
-                    }
-                    required
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-                  />
-                  <input
-                    type="email"
-                    placeholder="Your Email"
-                    value={tourForm.email}
-                    onChange={(e) =>
-                      setTourForm({ ...tourForm, email: e.target.value })
                     }
                     required
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
@@ -929,9 +992,17 @@ const PropertyDetails = () => {
         {/* Similar Properties */}
         {similarProperties.length > 0 && (
           <div className="mt-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-6">
-              Similar Properties
-            </h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-bold text-gray-900">
+                Similar Properties
+              </h2>
+              {similarLoading && (
+                <div className="text-sm text-gray-500 flex items-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                  Loading...
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {similarProperties.map((relatedProperty) => (
                 <div
@@ -946,6 +1017,9 @@ const PropertyDetails = () => {
                       }
                       alt={relatedProperty.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      onError={(e) => {
+                        e.target.src = "/property-placeholder.jpg";
+                      }}
                     />
                   </div>
                   <div className="p-5">
