@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api from "../../utils/api";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "react-toastify";
 
 const AdminMeetings = () => {
-  useAuth();
+  const { isAdmin } = useAuth();
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
@@ -22,9 +22,10 @@ const AdminMeetings = () => {
   });
 
   useEffect(() => {
-    fetchMeetings();
-    fetchMeetingStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (isAdmin()) {
+      fetchMeetings();
+      fetchMeetingStats();
+    }
   }, [filters]);
 
   const fetchMeetings = async () => {
@@ -37,12 +38,16 @@ const AdminMeetings = () => {
         limit: filters.limit,
       }).toString();
 
-      const response = await axios.get(`/api/meetings/admin/all?${params}`);
+      const response = await api.get(`/api/meetings/admin/all?${params}`);
       setMeetings(response.data.data);
       setPagination(response.data.pagination);
     } catch (error) {
-      toast.error("Failed to fetch meetings");
       console.error("Error fetching meetings:", error);
+      if (error.userMessage) {
+        toast.error(error.userMessage);
+      } else {
+        toast.error("Failed to fetch meetings");
+      }
     } finally {
       setLoading(false);
     }
@@ -50,16 +55,19 @@ const AdminMeetings = () => {
 
   const fetchMeetingStats = async () => {
     try {
-      const response = await axios.get("/api/meetings/admin/stats");
+      const response = await api.get("/api/meetings/admin/stats");
       setStats(response.data.data);
     } catch (error) {
       console.error("Error fetching meeting stats:", error);
+      if (error.userMessage) {
+        toast.error(error.userMessage);
+      }
     }
   };
 
   const handleStatusUpdate = async (meetingId, status) => {
     try {
-      const response = await axios.patch(`/api/meetings/${meetingId}/status`, {
+      const response = await api.patch(`/api/meetings/${meetingId}/status`, {
         status,
         adminResponse: responseText,
       });
@@ -94,9 +102,14 @@ const AdminMeetings = () => {
         toast.warning("Email could not be sent");
       }
     } catch (error) {
-      toast.error(
-        error.response?.data?.message || "Failed to update meeting status"
-      );
+      console.error("Error updating meeting status:", error);
+      if (error.userMessage) {
+        toast.error(error.userMessage);
+      } else {
+        toast.error(
+          error.response?.data?.message || "Failed to update meeting status"
+        );
+      }
     }
   };
 

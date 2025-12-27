@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -15,10 +15,15 @@ const MyMeetings = () => {
 
   const fetchMyMeetings = async () => {
     try {
-      const response = await axios.get('/api/meetings/my-meetings');
+      const response = await api.get('/api/meetings/my-meetings');
       setMeetings(response.data.data);
     } catch (error) {
-      toast.error('Failed to fetch your meetings');
+      console.error("Error fetching meetings:", error);
+      if (error.userMessage) {
+        toast.error(error.userMessage);
+      } else {
+        toast.error('Failed to fetch your meetings');
+      }
     } finally {
       setLoading(false);
     }
@@ -43,6 +48,23 @@ const MyMeetings = () => {
       case 'rejected': return 'bg-red-100 text-red-800';
       case 'cancelled': return 'bg-gray-100 text-gray-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const handleCancelMeeting = async (meetingId) => {
+    if (window.confirm('Are you sure you want to cancel this meeting?')) {
+      try {
+        await api.delete(`/api/meetings/${meetingId}`);
+        toast.success('Meeting cancelled successfully');
+        fetchMyMeetings();
+      } catch (error) {
+        console.error("Error cancelling meeting:", error);
+        if (error.userMessage) {
+          toast.error(error.userMessage);
+        } else {
+          toast.error('Failed to cancel meeting');
+        }
+      }
     }
   };
 
@@ -125,17 +147,7 @@ const MyMeetings = () => {
                     </Link>
                     {meeting.status === 'pending' && (
                       <button
-                        onClick={async () => {
-                          if (window.confirm('Are you sure you want to cancel this meeting?')) {
-                            try {
-                              await axios.delete(`/api/meetings/${meeting._id}`);
-                              toast.success('Meeting cancelled successfully');
-                              fetchMyMeetings();
-                            } catch (error) {
-                              toast.error('Failed to cancel meeting');
-                            }
-                          }
-                        }}
+                        onClick={() => handleCancelMeeting(meeting._id)}
                         className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm"
                       >
                         Cancel

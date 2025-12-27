@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import axios from "axios";
+import api from "../../utils/api";
 import { toast } from "react-toastify";
 import {
   Heart,
@@ -35,16 +35,21 @@ const PropertyCard = ({ property }) => {
 
     try {
       if (isSaved) {
-        await axios.delete(`/api/users/unsave-property/${property._id}`);
+        await api.delete(`/api/users/unsave-property/${property._id}`);
         setIsSaved(false);
         toast.success("Property removed from saved list");
       } else {
-        await axios.post(`/api/users/save-property/${property._id}`);
+        await api.post(`/api/users/save-property/${property._id}`);
         setIsSaved(true);
         toast.success("Property saved successfully");
       }
     } catch (error) {
-      toast.error("Failed to save property");
+      console.error("Error saving property:", error);
+      if (error.userMessage) {
+        toast.error(error.userMessage);
+      } else {
+        toast.error("Failed to save property");
+      }
     }
   };
 
