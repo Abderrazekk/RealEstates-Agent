@@ -51,7 +51,7 @@ const PropertyCard = ({ property }) => {
         toast.error("Failed to save property");
       }
     }
-  };
+  };//aaaaaaaaaaaaaaaaaaaaaaaaa
 
   return (
     <div className="group bg-white rounded-3xl shadow-md hover:shadow-2xl transition-all duration-500 overflow-hidden border border-gray-100 hover:border-blue-200 hover:-translate-y-1">
